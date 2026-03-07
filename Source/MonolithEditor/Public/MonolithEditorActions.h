@@ -21,10 +21,12 @@ public:
 
 	TArray<FMonolithLogEntry> GetRecentEntries(int32 Count) const;
 	TArray<FMonolithLogEntry> SearchEntries(const FString& Pattern, const FString& CategoryFilter, ELogVerbosity::Type MaxVerbosity, int32 Limit) const;
+	TArray<FMonolithLogEntry> GetEntriesSince(double SinceTimestamp, const TArray<FName>& CategoryFilter, ELogVerbosity::Type MaxVerbosity, int32 Limit) const;
 	TArray<FString> GetActiveCategories() const;
 
 	int32 GetCountByVerbosity(ELogVerbosity::Type Verbosity) const;
 	int32 GetTotalCount() const;
+	int32 CountErrorsSince(double SinceTimestamp) const;
 
 private:
 	mutable FCriticalSection Lock;
@@ -43,12 +45,14 @@ class FMonolithEditorActions
 {
 public:
 	static void RegisterActions(FMonolithLogCapture* LogCapture);
+	static void InitLiveCodingDelegate();
 
 	static FMonolithActionResult HandleTriggerBuild(const TSharedPtr<FJsonObject>& Params);
 	static FMonolithActionResult HandleGetBuildErrors(const TSharedPtr<FJsonObject>& Params);
 	static FMonolithActionResult HandleGetBuildStatus(const TSharedPtr<FJsonObject>& Params);
 	static FMonolithActionResult HandleGetBuildSummary(const TSharedPtr<FJsonObject>& Params);
 	static FMonolithActionResult HandleSearchBuildOutput(const TSharedPtr<FJsonObject>& Params);
+	static FMonolithActionResult HandleGetCompileOutput(const TSharedPtr<FJsonObject>& Params);
 	static FMonolithActionResult HandleGetRecentLogs(const TSharedPtr<FJsonObject>& Params);
 	static FMonolithActionResult HandleSearchLogs(const TSharedPtr<FJsonObject>& Params);
 	static FMonolithActionResult HandleTailLog(const TSharedPtr<FJsonObject>& Params);
@@ -56,6 +60,14 @@ public:
 	static FMonolithActionResult HandleGetLogStats(const TSharedPtr<FJsonObject>& Params);
 	static FMonolithActionResult HandleGetCrashContext(const TSharedPtr<FJsonObject>& Params);
 
+	static void OnLiveCodingPatchComplete();
+
 private:
 	static FMonolithLogCapture* CachedLogCapture;
+
+	static double LastCompileTimestamp;
+	static FString LastCompileResult;
+	static bool bIsCompiling;
+	static bool bPatchApplied;
+	static double LastCompileEndTimestamp;
 };

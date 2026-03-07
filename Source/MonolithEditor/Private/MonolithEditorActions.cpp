@@ -11,9 +11,16 @@
 #include "ILiveCodingModule.h"
 #endif
 
-// --- Log capture ---
+// --- Compile state ---
 
 FMonolithLogCapture* FMonolithEditorActions::CachedLogCapture = nullptr;
+double FMonolithEditorActions::LastCompileTimestamp = 0.0;
+FString FMonolithEditorActions::LastCompileResult = TEXT("none");
+bool FMonolithEditorActions::bIsCompiling = false;
+bool FMonolithEditorActions::bPatchApplied = false;
+double FMonolithEditorActions::LastCompileEndTimestamp = 0.0;
+
+// --- Log capture ---
 
 void FMonolithLogCapture::Serialize(const TCHAR* V, ELogVerbosity::Type Verbosity, const FName& Category)
 {
@@ -121,6 +128,47 @@ int32 FMonolithLogCapture::GetTotalCount() const
 	return TotalFatal + TotalError + TotalWarning + TotalLog + TotalVerbose;
 }
 
+TArray<FMonolithLogEntry> FMonolithLogCapture::GetEntriesSince(double SinceTimestamp, const TArray<FName>& CategoryFilter, ELogVerbosity::Type MaxVerbosity, int32 Limit) const
+{
+	FScopeLock ScopeLock(&Lock);
+	TArray<FMonolithLogEntry> Result;
+
+	int32 Total = RingBuffer.Num();
+	int32 Start = bWrapped ? WriteIndex : 0;
+
+	for (int32 i = 0; i < Total && Result.Num() < Limit; ++i)
+	{
+		int32 Idx = (Start + i) % Total;
+		const FMonolithLogEntry& Entry = RingBuffer[Idx];
+
+		if (Entry.Timestamp < SinceTimestamp) continue;
+		if (Entry.Verbosity > MaxVerbosity) continue;
+		if (CategoryFilter.Num() > 0 && !CategoryFilter.Contains(Entry.Category)) continue;
+
+		Result.Add(Entry);
+	}
+	return Result;
+}
+
+int32 FMonolithLogCapture::CountErrorsSince(double SinceTimestamp) const
+{
+	FScopeLock ScopeLock(&Lock);
+	int32 Count = 0;
+	int32 Total = RingBuffer.Num();
+	int32 Start = bWrapped ? WriteIndex : 0;
+
+	for (int32 i = 0; i < Total; ++i)
+	{
+		int32 Idx = (Start + i) % Total;
+		const FMonolithLogEntry& Entry = RingBuffer[Idx];
+		if (Entry.Timestamp >= SinceTimestamp && Entry.Verbosity <= ELogVerbosity::Error)
+		{
+			++Count;
+		}
+	}
+	return Count;
+}
+
 // --- Helpers ---
 
 static FString VerbosityToString(ELogVerbosity::Type V)
@@ -159,6 +207,37 @@ static TSharedPtr<FJsonObject> LogEntryToJson(const FMonolithLogEntry& Entry)
 	return Obj;
 }
 
+// --- Live Coding delegate ---
+
+void FMonolithEditorActions::InitLiveCodingDelegate()
+{
+#if PLATFORM_WINDOWS
+	ILiveCodingModule* LC = FModuleManager::GetModulePtr<ILiveCodingModule>(LIVE_CODING_MODULE_NAME);
+	if (LC)
+	{
+		LC->GetOnPatchCompleteDelegate().AddStatic(&FMonolithEditorActions::OnLiveCodingPatchComplete);
+	}
+#endif
+}
+
+void FMonolithEditorActions::OnLiveCodingPatchComplete()
+{
+	bIsCompiling = false;
+	bPatchApplied = true;
+	LastCompileResult = TEXT("success");
+	LastCompileEndTimestamp = FPlatformTime::Seconds();
+}
+
+static FString TimestampToIso(double PlatformSeconds)
+{
+	if (PlatformSeconds <= 0.0) return TEXT("never");
+	FDateTime Now = FDateTime::UtcNow();
+	double CurrentSeconds = FPlatformTime::Seconds();
+	double Delta = CurrentSeconds - PlatformSeconds;
+	FDateTime EventTime = Now - FTimespan::FromSeconds(Delta);
+	return EventTime.ToIso8601();
+}
+
 // --- Registration ---
 
 void FMonolithEditorActions::RegisterActions(FMonolithLogCapture* LogCapture)
@@ -175,11 +254,11 @@ void FMonolithEditorActions::RegisterActions(FMonolithLogCapture* LogCapture)
 		FMonolithActionHandler::CreateStatic(&HandleTriggerBuild));
 
 	Registry.RegisterAction(TEXT("editor"), TEXT("get_build_errors"),
-		TEXT("Get build errors and warnings from the last compile"),
+		TEXT("Get build errors and warnings. Params: since (float, seconds ago), category (string), compile_only (bool, filter to LogLiveCoding/LogCompile/LogLinker)"),
 		FMonolithActionHandler::CreateStatic(&HandleGetBuildErrors));
 
 	Registry.RegisterAction(TEXT("editor"), TEXT("get_build_status"),
-		TEXT("Check if a build is currently in progress"),
+		TEXT("Check compile status: compiling, last_result, last_compile_time, errors_since_compile, patch_applied"),
 		FMonolithActionHandler::CreateStatic(&HandleGetBuildStatus));
 
 	Registry.RegisterAction(TEXT("editor"), TEXT("get_build_summary"),
@@ -210,9 +289,15 @@ void FMonolithEditorActions::RegisterActions(FMonolithLogCapture* LogCapture)
 		TEXT("Get log statistics by verbosity level"),
 		FMonolithActionHandler::CreateStatic(&HandleGetLogStats));
 
+	Registry.RegisterAction(TEXT("editor"), TEXT("get_compile_output"),
+		TEXT("Get structured compile report: result, time, log lines from compile categories, error/warning counts, patch status"),
+		FMonolithActionHandler::CreateStatic(&HandleGetCompileOutput));
+
 	Registry.RegisterAction(TEXT("editor"), TEXT("get_crash_context"),
 		TEXT("Get last crash/ensure context information"),
 		FMonolithActionHandler::CreateStatic(&HandleGetCrashContext));
+
+	InitLiveCodingDelegate();
 }
 
 // --- Build actions ---
@@ -243,6 +328,10 @@ FMonolithActionResult FMonolithEditorActions::HandleTriggerBuild(const TSharedPt
 		bWait = Params->GetBoolField(TEXT("wait"));
 	}
 
+	LastCompileTimestamp = FPlatformTime::Seconds();
+	bIsCompiling = true;
+	bPatchApplied = false;
+
 	TSharedPtr<FJsonObject> Root = MakeShared<FJsonObject>();
 
 	if (bWait)
@@ -250,12 +339,14 @@ FMonolithActionResult FMonolithEditorActions::HandleTriggerBuild(const TSharedPt
 		ELiveCodingCompileResult CompileResult;
 		bool bStarted = LiveCoding->Compile(ELiveCodingCompileFlags::WaitForCompletion, &CompileResult);
 
+		bIsCompiling = false;
+		LastCompileEndTimestamp = FPlatformTime::Seconds();
 		Root->SetBoolField(TEXT("started"), bStarted);
 
 		FString ResultStr;
 		switch (CompileResult)
 		{
-		case ELiveCodingCompileResult::Success: ResultStr = TEXT("success"); break;
+		case ELiveCodingCompileResult::Success: ResultStr = TEXT("success"); bPatchApplied = true; break;
 		case ELiveCodingCompileResult::NoChanges: ResultStr = TEXT("no_changes"); break;
 		case ELiveCodingCompileResult::Failure: ResultStr = TEXT("failure"); break;
 		case ELiveCodingCompileResult::Cancelled: ResultStr = TEXT("cancelled"); break;
@@ -263,11 +354,13 @@ FMonolithActionResult FMonolithEditorActions::HandleTriggerBuild(const TSharedPt
 		case ELiveCodingCompileResult::NotStarted: ResultStr = TEXT("not_started"); break;
 		default: ResultStr = TEXT("unknown"); break;
 		}
+		LastCompileResult = ResultStr;
 		Root->SetStringField(TEXT("result"), ResultStr);
 	}
 	else
 	{
 		LiveCoding->Compile();
+		LastCompileResult = TEXT("in_progress");
 		Root->SetBoolField(TEXT("started"), true);
 		Root->SetStringField(TEXT("result"), TEXT("in_progress"));
 	}
@@ -284,15 +377,40 @@ FMonolithActionResult FMonolithEditorActions::HandleGetBuildErrors(const TShared
 	TArray<TSharedPtr<FJsonValue>> ErrorsArr;
 	TArray<TSharedPtr<FJsonValue>> WarningsArr;
 
+	// Determine time window
+	double SinceTimestamp = LastCompileTimestamp; // Default: since last compile
+	if (Params->HasField(TEXT("since")))
+	{
+		double SecondsAgo = Params->GetNumberField(TEXT("since"));
+		SinceTimestamp = FPlatformTime::Seconds() - SecondsAgo;
+	}
+
+	// Build category filter
+	TArray<FName> CategoryFilter;
+	bool bCompileOnly = false;
+	if (Params->HasField(TEXT("compile_only")))
+	{
+		bCompileOnly = Params->GetBoolField(TEXT("compile_only"));
+	}
+	if (bCompileOnly)
+	{
+		CategoryFilter.Add(FName(TEXT("LogLiveCoding")));
+		CategoryFilter.Add(FName(TEXT("LogCompile")));
+		CategoryFilter.Add(FName(TEXT("LogLinker")));
+	}
+	else if (Params->HasField(TEXT("category")))
+	{
+		CategoryFilter.Add(FName(*Params->GetStringField(TEXT("category"))));
+	}
+
 	if (CachedLogCapture)
 	{
-		TArray<FMonolithLogEntry> Entries = CachedLogCapture->SearchEntries(
-			TEXT(""), TEXT(""), ELogVerbosity::Warning, 500);
+		TArray<FMonolithLogEntry> Entries = CachedLogCapture->GetEntriesSince(
+			SinceTimestamp, CategoryFilter, ELogVerbosity::Warning, 500);
 
 		for (const FMonolithLogEntry& Entry : Entries)
 		{
-			// Filter for compile-related messages
-			if (Entry.Message.Contains(TEXT("error")) || Entry.Message.Contains(TEXT("Error")))
+			if (Entry.Verbosity <= ELogVerbosity::Error)
 			{
 				TSharedPtr<FJsonObject> ErrObj = MakeShared<FJsonObject>();
 				ErrObj->SetStringField(TEXT("message"), Entry.Message);
@@ -314,6 +432,7 @@ FMonolithActionResult FMonolithEditorActions::HandleGetBuildErrors(const TShared
 	Root->SetArrayField(TEXT("errors"), ErrorsArr);
 	Root->SetNumberField(TEXT("warning_count"), WarningsArr.Num());
 	Root->SetArrayField(TEXT("warnings"), WarningsArr);
+	Root->SetStringField(TEXT("since"), TimestampToIso(SinceTimestamp));
 
 	return FMonolithActionResult::Success(Root);
 }
@@ -326,10 +445,22 @@ FMonolithActionResult FMonolithEditorActions::HandleGetBuildStatus(const TShared
 	ILiveCodingModule* LiveCoding = FModuleManager::GetModulePtr<ILiveCodingModule>(LIVE_CODING_MODULE_NAME);
 	if (LiveCoding)
 	{
+		bool bCurrentlyCompiling = LiveCoding->IsCompiling();
+
+		// Update tracked state if LC reports done but we haven't caught it yet
+		if (bIsCompiling && !bCurrentlyCompiling)
+		{
+			bIsCompiling = false;
+			if (LastCompileEndTimestamp < LastCompileTimestamp)
+			{
+				LastCompileEndTimestamp = FPlatformTime::Seconds();
+			}
+		}
+
 		Root->SetBoolField(TEXT("live_coding_available"), true);
 		Root->SetBoolField(TEXT("live_coding_started"), LiveCoding->HasStarted());
 		Root->SetBoolField(TEXT("live_coding_enabled"), LiveCoding->IsEnabledForSession());
-		Root->SetBoolField(TEXT("compiling"), LiveCoding->IsCompiling());
+		Root->SetBoolField(TEXT("compiling"), bCurrentlyCompiling);
 	}
 	else
 	{
@@ -340,6 +471,19 @@ FMonolithActionResult FMonolithEditorActions::HandleGetBuildStatus(const TShared
 	Root->SetBoolField(TEXT("live_coding_available"), false);
 	Root->SetBoolField(TEXT("compiling"), false);
 #endif
+
+	Root->SetStringField(TEXT("last_result"), LastCompileResult);
+	Root->SetStringField(TEXT("last_compile_time"), TimestampToIso(LastCompileTimestamp));
+	Root->SetBoolField(TEXT("patch_applied"), bPatchApplied);
+
+	if (CachedLogCapture && LastCompileTimestamp > 0.0)
+	{
+		Root->SetNumberField(TEXT("errors_since_compile"), CachedLogCapture->CountErrorsSince(LastCompileTimestamp));
+	}
+	else
+	{
+		Root->SetNumberField(TEXT("errors_since_compile"), 0);
+	}
 
 	return FMonolithActionResult::Success(Root);
 }
@@ -405,6 +549,49 @@ FMonolithActionResult FMonolithEditorActions::HandleSearchBuildOutput(const TSha
 	Root->SetStringField(TEXT("pattern"), Pattern);
 	Root->SetNumberField(TEXT("match_count"), Matches.Num());
 	Root->SetArrayField(TEXT("matches"), Matches);
+
+	return FMonolithActionResult::Success(Root);
+}
+
+// --- Compile output ---
+
+FMonolithActionResult FMonolithEditorActions::HandleGetCompileOutput(const TSharedPtr<FJsonObject>& Params)
+{
+	TSharedPtr<FJsonObject> Root = MakeShared<FJsonObject>();
+
+	Root->SetStringField(TEXT("last_result"), LastCompileResult);
+	Root->SetStringField(TEXT("last_compile_time"), TimestampToIso(LastCompileTimestamp));
+	Root->SetStringField(TEXT("last_compile_end_time"), TimestampToIso(LastCompileEndTimestamp));
+	Root->SetBoolField(TEXT("patch_applied"), bPatchApplied);
+	Root->SetBoolField(TEXT("compiling"), bIsCompiling);
+
+	int32 ErrorCount = 0;
+	int32 WarningCount = 0;
+	TArray<TSharedPtr<FJsonValue>> LogLines;
+
+	if (CachedLogCapture && LastCompileTimestamp > 0.0)
+	{
+		// Get all log lines from compile-related categories since last compile
+		TArray<FName> CompileCategories;
+		CompileCategories.Add(FName(TEXT("LogLiveCoding")));
+		CompileCategories.Add(FName(TEXT("LogCompile")));
+		CompileCategories.Add(FName(TEXT("LogLinker")));
+
+		TArray<FMonolithLogEntry> Entries = CachedLogCapture->GetEntriesSince(
+			LastCompileTimestamp, CompileCategories, ELogVerbosity::VeryVerbose, 500);
+
+		for (const FMonolithLogEntry& Entry : Entries)
+		{
+			LogLines.Add(MakeShared<FJsonValueObject>(LogEntryToJson(Entry)));
+			if (Entry.Verbosity <= ELogVerbosity::Error) ++ErrorCount;
+			else if (Entry.Verbosity == ELogVerbosity::Warning) ++WarningCount;
+		}
+	}
+
+	Root->SetNumberField(TEXT("error_count"), ErrorCount);
+	Root->SetNumberField(TEXT("warning_count"), WarningCount);
+	Root->SetNumberField(TEXT("log_line_count"), LogLines.Num());
+	Root->SetArrayField(TEXT("compile_log"), LogLines);
 
 	return FMonolithActionResult::Success(Root);
 }
