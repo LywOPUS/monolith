@@ -4,6 +4,8 @@
 #include "MonolithParamSchema.h"
 #include "Engine/SimpleConstructionScript.h"
 #include "Engine/SCS_Node.h"
+#include "Engine/SkinnedAsset.h"
+#include "Components/SkinnedMeshComponent.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 
 // ---------------------------------------------------------------------------
@@ -570,7 +572,59 @@ FMonolithActionResult FMonolithBlueprintComponentActions::HandleSetComponentProp
 					*Path, *NewObject->GetClass()->GetName(), *PropName, *ObjProp->PropertyClass->GetName()));
 			}
 		}
-		ObjProp->SetObjectPropertyValue(ValuePtr, NewObject);
+
+		// Route the write through the canonical setter when one exists. The
+		// engine contract: a UPROPERTY with `Setter=` metadata or a deprecated/
+		// aliased pair (USkinnedMeshComponent::SkinnedAsset ↔ SkeletalMesh,
+		// AnimClass, MeshDeformer, etc.) MUST go through the setter so all
+		// aliases are written and any side effects (render-state refresh,
+		// PostLoad alias re-sync) fire correctly. Writing the field directly
+		// produces a value that survives serialization but is then clobbered
+		// by PostLoad's alias re-sync — see SkinnedMeshComponent.cpp:660-663.
+		bool bWroteValue = false;
+
+		// 1) Special-case: USkinnedMeshComponent::SkinnedAsset is private with
+		//    no Setter meta of its own; it's the new field that PostLoad copies
+		//    from the deprecated SkeletalMesh. Route through SetSkinnedAssetAndUpdate
+		//    which writes both aliases atomically.
+		if (USkinnedMeshComponent* SMC = Cast<USkinnedMeshComponent>(Template))
+		{
+			if (PropName.Equals(TEXT("SkinnedAsset"), ESearchCase::IgnoreCase) ||
+				PropName.Equals(TEXT("SkeletalMesh"), ESearchCase::IgnoreCase) ||
+				PropName.Equals(TEXT("SkeletalMeshAsset"), ESearchCase::IgnoreCase))
+			{
+				if (USkinnedAsset* NewAsset = Cast<USkinnedAsset>(NewObject); NewAsset || bIsNone)
+				{
+					SMC->SetSkinnedAssetAndUpdate(NewAsset);
+					bWroteValue = true;
+				}
+			}
+		}
+
+		// 2) General: detect UPROPERTY `Setter=` metadata and call the named
+		//    setter via reflection. This honours the engine contract for any
+		//    deprecated/aliased UPROPERTY pair. Setter signature is always
+		//    `void SetX(T NewValue)` so a single-pointer params struct works.
+		if (!bWroteValue)
+		{
+			const FString SetterName = ObjProp->GetMetaData(TEXT("Setter"));
+			if (!SetterName.IsEmpty())
+			{
+				if (UFunction* SetterFunc = Template->GetClass()->FindFunctionByName(*SetterName))
+				{
+					struct FObjectSetterParams { UObject* InValue; } SetterParams;
+					SetterParams.InValue = NewObject;
+					Template->ProcessEvent(SetterFunc, &SetterParams);
+					bWroteValue = true;
+				}
+			}
+		}
+
+		// 3) Fallback: direct field write for properties with no setter contract.
+		if (!bWroteValue)
+		{
+			ObjProp->SetObjectPropertyValue(ValuePtr, NewObject);
+		}
 	}
 	else
 	{
