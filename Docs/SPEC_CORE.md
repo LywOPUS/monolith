@@ -12,7 +12,7 @@
 
 ## 1. Overview
 
-Monolith is a unified Unreal Engine editor plugin that consolidates 9 separate MCP (Model Context Protocol) servers and 4 C++ plugins into a single plugin with an embedded HTTP MCP server. It reduces ~220 individual tools down to 19 MCP tools (1283 total actions across 16 domains; 1238 active by default — 45 experimental town gen actions disabled), cutting AI assistant context consumption by ~95%. The CommonUI action pack (50 actions, conditional on `WITH_COMMONUI`) shipped M0.5, v0.14.0 (2026-04-19), tested M0.5.1 (2026-04-25).
+Monolith is a unified Unreal Engine editor plugin that consolidates 9 separate MCP (Model Context Protocol) servers and 4 C++ plugins into a single plugin with an embedded HTTP MCP server. It reduces ~220 individual tools down to 19 MCP tools (1286 total registrations across 16 namespaces, 1282 distinct handlers; 1241 active by default — 45 experimental town gen actions disabled), cutting AI assistant context consumption by ~95%. The CommonUI action pack (50 actions, conditional on `WITH_COMMONUI`) shipped M0.5, v0.14.0 (2026-04-19), tested M0.5.1 (2026-04-25).
 
 ### What It Replaces
 
@@ -37,27 +37,31 @@ Monolith.uplugin
   MonolithCore          — HTTP server (bind retry with port probe, Restart()), tool registry, discovery, settings, auto-updater
   MonolithBlueprint     — Blueprint inspection, variable/component/graph CRUD, node operations, compile, spawn (89 actions)
   MonolithMaterial      — Material inspection + graph editing + CRUD + function suite + tiling quality + texture preview (63 actions)
-  MonolithAnimation     — Animation sequences, montages, ABPs, curves, notifies, skeletons, PoseSearch (116 actions)
-  MonolithNiagara       — Niagara particle systems, HLSL module/function creation, DI config, event handlers, sim stages, NPC, effect types, scalability (108 actions)
-  MonolithEditor        — Build triggers, live compile, log capture, compile output, crash context, scene capture, texture import, GIF capture (20 actions)
+  MonolithAnimation     — Animation sequences, montages, ABPs, curves, notifies, skeletons, PoseSearch, ABP/ControlRig write, layout (118 actions)
+  MonolithNiagara       — Niagara particle systems, HLSL module/function creation, DI config, event handlers, sim stages, NPC, effect types, scalability, layout (109 actions)
+  MonolithEditor        — Build triggers, live compile, log capture, compile output, crash context, scene capture, texture import, flipbook stitching, asset deletion, viewport info, blank-map factory + module status (Phase J F8) (22 actions)
   MonolithConfig        — Config/INI resolution and search (6 actions)
   MonolithIndex         — SQLite FTS5 deep project indexer, 14 internal indexers (7 MCP actions)
-  MonolithSource        — Engine source + API lookup (11 actions)
-  MonolithUI            — Widget blueprint CRUD, templates, styling, animation, settings scaffolding, accessibility (42 UMG + 50 CommonUI = 92 actions). CommonUI actions conditional on #if WITH_COMMONUI. Shipped M0.5, v0.14.0 (2026-04-19)
-  MonolithMesh          — Mesh inspection, scene manipulation, spatial queries, level blockout, GeometryScript ops, horror/accessibility, lighting, audio/acoustics, performance, decals, level design, tech art, context props, procedural geometry (sweep walls, auto-collision, proc mesh caching, blueprint prefabs), genre presets, encounter design, accessibility reports (197 core actions) + EXPERIMENTAL procedural town generator (45 actions, disabled by default via bEnableProceduralTownGen) = 242 total
-  MonolithGAS           — Gameplay Ability System integration: abilities, attributes, effects, ASC, tags, cues, targets, input, inspection, scaffolding (130 actions). Conditional on #if WITH_GBA
+  MonolithSource        — Engine source + API lookup, auto-reindex on hot-reload (Phase J F17) (11 actions)
+  MonolithUI            — Widget blueprint CRUD, templates, styling, animation, settings scaffolding, accessibility (42 UMG + 50 CommonUI + 4 GAS UI binding aliases = 96 actions). CommonUI actions conditional on #if WITH_COMMONUI. Shipped M0.5, v0.14.0 (2026-04-19)
+  MonolithMesh          — Mesh inspection, scene manipulation, spatial queries, level blockout, GeometryScript ops, horror/accessibility, lighting, audio/acoustics, performance, decals, level design, tech art, context props, procedural geometry (sweep walls, auto-collision, proc mesh caching, blueprint prefabs), genre presets, encounter design, accessibility reports (195 core actions) + EXPERIMENTAL procedural town generator (45 actions, disabled by default via bEnableProceduralTownGen) = 240 total
+  MonolithGAS           — Gameplay Ability System integration: abilities, attributes, effects, ASC, tags, cues, targets, input, inspection, scaffolding, UI attribute binding (135 actions: 131 GAS-namespace + 4 also aliased into `ui` namespace). Conditional on #if WITH_GBA
   MonolithComboGraph    — ComboGraph plugin integration: combo graph CRUD, node/edge management, effects, cues, ability scaffolding (13 actions). Conditional on #if WITH_COMBOGRAPH
-  MonolithAI            — AI asset manipulation: Behavior Trees, Blackboards, State Trees, EQS, Smart Objects, AI Controllers, Perception, Navigation, Runtime/PIE, Scaffolds, Discovery, Advanced (229 actions). Conditional on #if WITH_STATETREE, #if WITH_SMARTOBJECTS (required); #if WITH_MASSENTITY, #if WITH_ZONEGRAPH (optional)
+  MonolithAI            — AI asset manipulation: Behavior Trees, Blackboards, State Trees, EQS, Smart Objects, AI Controllers, Perception, Navigation, Runtime/PIE, Scaffolds, Discovery, Advanced (221 actions, +2 from Phase J F8). Conditional on #if WITH_STATETREE, #if WITH_SMARTOBJECTS (required); #if WITH_MASSENTITY, #if WITH_ZONEGRAPH (optional)
   MonolithLogicDriver   — Logic Driver Pro integration: SM CRUD, graph read/write, node config, runtime/PIE, JSON spec, scaffolding, discovery, components, text graph (66 actions). Conditional on #if WITH_LOGICDRIVER
-  MonolithAudio         — Audio asset creation, inspection, batch management, Sound Cue graph building, MetaSound graph building via Builder API (81 actions). MetaSound conditional on #if WITH_METASOUND
+  MonolithAudio         — Audio asset creation, inspection, batch management, Sound Cue graph building, MetaSound graph building via Builder API, AI Perception sound binding, sine-tone test wave (Phase J F18) (86 actions). MetaSound conditional on #if WITH_METASOUND
+  MonolithAudioRuntime  — Runtime sub-module (Type: Runtime) holding `UMonolithSoundPerceptionUserData` + `UMonolithAudioPerceptionSubsystem` consumed by `audio::bind_sound_to_perception`. **Editor-only ship caveat** — Monolith does not currently ship to cooked game builds, so the runtime sub-module is not present at runtime in shipped Steam builds. See `COOKED_BUILD_TODO.md`. (0 MCP actions — provides runtime classes only)
   MonolithBABridge      — Optional IModularFeatures bridge for Blueprint Assist integration. Exposes IMonolithGraphFormatter; enables BA-powered auto_layout across blueprint, material, animation, and niagara modules when Blueprint Assist is present (0 MCP actions — integration only)
 ```
 
 **Custom sibling plugins (not inside core Monolith — source + per-module specs are private to their respective repos):**
 - **MonolithISX** — InventorySystemX integration, 158 actions, `inventory` namespace, conditional on InventorySystemX. Extracted 2026-04-21 to `Plugins/MonolithISX/`. Totals above do NOT include these 158 actions.
 - **MonolithSteamBridge** — Steam Integration Kit integration, 28 actions, `steam` namespace, conditional on SIK. Lives at `Plugins/MonolithSteamBridge/` (+ `Plugins/MonolithSteamBridgeLeaderboard/` for full-fidelity leaderboard fidelity). Totals above do NOT include these 28 actions.
+- **MonolithClaudeDesignBridge** — Claude Design → UMG bridge, 11 actions, `claudedesign` namespace, conditional on the bridge plugin (M3.5 Transpiler Fidelity shipped 2026-04-25). Totals above do NOT include these 11 actions.
 
 For the architectural pattern that lets you write your own sibling plugin and register actions into Monolith's MCP registry from outside the core repo, see [`SIBLING_PLUGIN_GUIDE.md`](SIBLING_PLUGIN_GUIDE.md).
+
+> **Live editor `monolith_status` will report a higher count than the in-tree total.** When sibling plugins are loaded the editor reports the union (e.g. on the Leviathan project at v0.14.7 / dv.commit.428: `actions=1462, namespaces=20` — the +176 delta over the in-tree 1286 is the sibling plugins above). This is expected. The numbers in §12 below are the **in-tree** ground truth — sibling totals are specced in their own repos.
 
 ### Discovery/Dispatch Pattern
 
@@ -78,7 +82,7 @@ All domain modules register actions with `FMonolithToolRegistry` (central single
 | Module | Loading Phase | Type |
 |--------|--------------|------|
 | MonolithCore | PostEngineInit | Editor |
-| All others (16) | Default | Editor (MonolithBABridge is optional — empty shell when Blueprint Assist absent) |
+| All others (16 Editor + 1 Runtime) | Default | Editor (MonolithBABridge is optional — empty shell when Blueprint Assist absent). MonolithAudioRuntime is Type: Runtime — provides `UMonolithSoundPerceptionUserData` + `UMonolithAudioPerceptionSubsystem` for `audio::bind_sound_to_perception` |
 
 ### Plugin Dependencies
 
@@ -121,20 +125,20 @@ Each module has its own spec file under `specs/`. The table below is the index.
 | 3.1 | MonolithCore | [specs/SPEC_MonolithCore.md](specs/SPEC_MonolithCore.md) | HTTP server (bind retry, Restart(), `Monolith.Restart` console cmd), tool registry, discovery, settings, auto-updater |
 | 3.2 | MonolithBlueprint | [specs/SPEC_MonolithBlueprint.md](specs/SPEC_MonolithBlueprint.md) | Blueprint inspection, variable/component/graph CRUD, node ops, compile, spawn (89 actions) |
 | 3.3 | MonolithMaterial | [specs/SPEC_MonolithMaterial.md](specs/SPEC_MonolithMaterial.md) | Material inspection + graph editing + CRUD + function suite (63 actions) |
-| 3.4 | MonolithAnimation | [specs/SPEC_MonolithAnimation.md](specs/SPEC_MonolithAnimation.md) | Animation sequences, montages, ABPs, curves, notifies, skeletons, PoseSearch (116 actions) |
-| 3.5 | MonolithNiagara | [specs/SPEC_MonolithNiagara.md](specs/SPEC_MonolithNiagara.md) | Niagara particle systems, HLSL module/function, DI config, event handlers, sim stages (108 actions) |
+| 3.4 | MonolithAnimation | [specs/SPEC_MonolithAnimation.md](specs/SPEC_MonolithAnimation.md) | Animation sequences, montages, ABPs, curves, notifies, skeletons, PoseSearch, ABP write, ControlRig (118 actions) |
+| 3.5 | MonolithNiagara | [specs/SPEC_MonolithNiagara.md](specs/SPEC_MonolithNiagara.md) | Niagara particle systems, HLSL module/function, DI config, event handlers, sim stages, layout (109 actions) |
 | 3.6 | MonolithEditor | [specs/SPEC_MonolithEditor.md](specs/SPEC_MonolithEditor.md) | Build triggers, live compile, log capture, crash context, scene capture (20 actions) |
 | 3.7 | MonolithConfig | [specs/SPEC_MonolithConfig.md](specs/SPEC_MonolithConfig.md) | Config/INI resolution and search (6 actions) |
 | 3.8 | MonolithIndex | [specs/SPEC_MonolithIndex.md](specs/SPEC_MonolithIndex.md) | SQLite FTS5 deep project indexer (7 MCP actions, 14 internal indexers) |
 | 3.9 | MonolithSource | [specs/SPEC_MonolithSource.md](specs/SPEC_MonolithSource.md) | Engine source + API lookup (11 actions) |
-| 3.10 | MonolithUI | [specs/SPEC_MonolithUI.md](specs/SPEC_MonolithUI.md) | Widget blueprint CRUD, templates, styling, accessibility, CommonUI activatables/buttons/input/focus/lists/dialogs/audit/a11y (92 actions: 42 UMG + 50 CommonUI) |
-| 3.11 | MonolithMesh | [specs/SPEC_MonolithMesh.md](specs/SPEC_MonolithMesh.md) | Mesh/scene/spatial/blockout/GeometryScript/procedural (197 core + 45 experimental town gen = 242 actions) |
+| 3.10 | MonolithUI | [specs/SPEC_MonolithUI.md](specs/SPEC_MonolithUI.md) | Widget blueprint CRUD, templates, styling, accessibility, CommonUI activatables/buttons/input/focus/lists/dialogs/audit/a11y (96 actions: 42 UMG + 50 CommonUI + 4 GAS aliases) |
+| 3.11 | MonolithMesh | [specs/SPEC_MonolithMesh.md](specs/SPEC_MonolithMesh.md) | Mesh/scene/spatial/blockout/GeometryScript/procedural (195 core + 45 experimental town gen = 240 actions) |
 | 3.12 | MonolithBABridge | [specs/SPEC_MonolithBABridge.md](specs/SPEC_MonolithBABridge.md) | IModularFeatures bridge for Blueprint Assist (0 MCP actions, integration only) |
-| 3.13 | MonolithGAS | [specs/SPEC_MonolithGAS.md](specs/SPEC_MonolithGAS.md) | Gameplay Ability System integration (130 actions, WITH_GBA) |
+| 3.13 | MonolithGAS | [specs/SPEC_MonolithGAS.md](specs/SPEC_MonolithGAS.md) | Gameplay Ability System integration (135 actions: 131 GAS + 4 UI binding aliased into `ui::`, WITH_GBA) |
 | 3.14 | MonolithComboGraph | [specs/SPEC_MonolithComboGraph.md](specs/SPEC_MonolithComboGraph.md) | ComboGraph integration (13 actions, WITH_COMBOGRAPH) |
 | 3.15 | MonolithLogicDriver | [specs/SPEC_MonolithLogicDriver.md](specs/SPEC_MonolithLogicDriver.md) | Logic Driver Pro integration (66 actions, WITH_LOGICDRIVER) |
-| 3.16 | MonolithAI | [specs/SPEC_MonolithAI.md](specs/SPEC_MonolithAI.md) | Behavior Trees, Blackboards, State Trees, EQS, Smart Objects, Perception, Nav (229 actions) |
-| 3.17 | MonolithAudio | [specs/SPEC_MonolithAudio.md](specs/SPEC_MonolithAudio.md) | Sound Cues, MetaSounds, batch audio ops (81 actions, MetaSound WITH_METASOUND) |
+| 3.16 | MonolithAI | [specs/SPEC_MonolithAI.md](specs/SPEC_MonolithAI.md) | Behavior Trees, Blackboards, State Trees, EQS, Smart Objects, Perception, Nav (221 actions, +2 in Phase J F8) |
+| 3.17 | MonolithAudio | [specs/SPEC_MonolithAudio.md](specs/SPEC_MonolithAudio.md) | Sound Cues, MetaSounds, batch audio ops, AI Perception bind (86 actions, MetaSound WITH_METASOUND) |
 
 ---
 
@@ -280,6 +284,8 @@ All skills follow a common structure: YAML frontmatter, Discovery section, Asset
 **Settings location:** Editor Preferences > Plugins > Monolith
 **Config file:** `Config/MonolithSettings.ini` section `[/Script/MonolithCore.MonolithSettings]`
 
+Setting names below match the actual `UMonolithSettings` UPROPERTY identifiers in `Source/MonolithCore/Public/MonolithSettings.h` (verified 2026-04-26 audit). The convention is `bEnable<Module>` for module toggles, `bEnableProceduralTownGen` for experimental sub-features.
+
 | Setting | Default | Description |
 |---------|---------|-------------|
 | ServerPort | 9316 | MCP HTTP server port |
@@ -287,19 +293,26 @@ All skills follow a common structure: YAML frontmatter, Discovery section, Asset
 | DatabasePathOverride | (empty) | Override default DB path (Plugins/Monolith/Saved/) |
 | EngineSourceDBPathOverride | (empty) | Override engine source DB path |
 | EngineSourcePath | (empty) | Override engine source directory |
-| bBlueprintEnabled | True | Enable Blueprint module |
-| bMaterialEnabled | True | Enable Material module |
-| bAnimationEnabled | True | Enable Animation module |
-| bNiagaraEnabled | True | Enable Niagara module |
-| bEditorEnabled | True | Enable Editor module |
-| bConfigEnabled | True | Enable Config module |
-| bIndexEnabled | True | Enable Index module |
-| bSourceEnabled | True | Enable Source module |
-| bUIEnabled | True | Enable UI module |
-| bMeshEnabled | True | Enable Mesh module (core actions) |
-| bGASEnabled | True | Enable GAS module (requires GameplayAbilities plugin; no-op if `WITH_GBA=0`) |
-| bEnableProceduralTownGen | **False** | Enable Procedural Town Generator actions (45 actions). Requires `bMeshEnabled`. **Work-in-progress** — known geometry issues, disabled by default. Unless you're willing to dig in and help improve it, best left alone |
+| bEnableBlueprint | True | Enable Blueprint module |
+| bEnableMaterial | True | Enable Material module |
+| bEnableAnimation | True | Enable Animation module |
+| bEnableNiagara | True | Enable Niagara module |
+| bEnableEditor | True | Enable Editor module |
+| bEnableConfig | True | Enable Config module |
+| bEnableIndex | True | Enable Index module |
+| bEnableSource | True | Enable Source module |
+| bEnableUI | True | Enable UI module |
+| bEnableMesh | True | Enable Mesh module (core actions) |
+| bEnableGAS | True | Enable GAS module (requires GameplayAbilities plugin; no-op if `WITH_GBA=0`) |
+| bEnableComboGraph | True | Enable ComboGraph module (no-op if `WITH_COMBOGRAPH=0`) |
+| bEnableLogicDriver | True | Enable Logic Driver Pro module (no-op if `WITH_LOGICDRIVER=0`) |
+| bEnableAI | True | Enable AI module (Behavior Trees, Blackboards, State Trees, EQS, Smart Objects, Perception, Navigation) |
+| bEnableAudio | True | Enable Audio module (Sound Cues, MetaSounds, batch ops, AI Perception bind) |
+| bEnableInventorySystemX | True | Enable InventorySystemX integration (no-op if InventorySystemX not present; routed via the sibling `MonolithISX` plugin) |
+| bEnableProceduralTownGen | **False** | Enable Procedural Town Generator actions (45 actions). Requires `bEnableMesh`. **Work-in-progress** — known geometry issues, disabled by default. Unless you're willing to dig in and help improve it, best left alone |
 | bEnableBlueprintAssist | True | Allow MonolithBABridge to register IMonolithGraphFormatter when Blueprint Assist is present. Set false to force built-in layout for all auto_layout calls |
+| bDeferFirstTimeIndex | False | If true, first-time indexing won't run automatically. Use `Monolith.StartIndex` console command to trigger |
+| bLogMemoryStats | False | Log memory usage during indexing for debugging. Default off — enable when investigating memory pressure |
 | LogVerbosity | 3 (Log) | 0=Silent, 1=Error, 2=Warning, 3=Log, 4=Verbose |
 
 **Note:** Module enable toggles are functional — each module checks its toggle at registration time and skips action registration if disabled.
@@ -462,34 +475,37 @@ See `TODO.md` for the full list. Key architectural constraints:
 - **F14+F16 (2026-04-26) — J2 spec relaxed to match omit-when-empty handler shape; combat tag refs corrected to existing `Ability.Combat.Melee.Light/Heavy` registry (`Plugins/Monolith/Docs/testing/2026-04-26-j2-bt-gas-ability-task-test.md`, `2026-04-26-j2-results.md`).** F14: TC2.16/TC2.17 sample responses rewritten to document `ability_class`/`ability_tags` as mutually-exclusive (exactly one present), and `event_tag`/`node_name` as OMITTED when not supplied — matches the as-shipped `HandleAddBTUseAbilityTask` serialization (`MonolithAIBehaviorTreeActions.cpp:3367-3392`) per the F5/F6 ADR pattern (relax spec to match impl, not the other way around). F16: J2 spec swept of `Ability.Combat.Punch` and `Ability.Combat.Kick` references — both unregistered. Replaced with `Ability.Combat.Melee.Light` / `Ability.Combat.Melee.Heavy` (verified registered at `Config/DefaultGameplayTags.ini:26-27`); fixture abilities renamed `GA_Test_Punch`/`GA_Test_Kick` → `GA_Test_MeleeLight`/`GA_Test_MeleeHeavy`; rationale ("uses existing Melee.Light/Heavy registry tags; Punch/Kick deliberately not in tree per survival-horror curation") inlined into TC2.9/TC2.11/§Setup. J2 results doc historical Punch/Kick mentions annotated as superseded-by-F16 rather than rewritten (preserves test-execution record). Plan: `Docs/plans/2026-04-26-monolith-j-phase-fix-plan-v2.md` §F14 + §F16. Investigation: `Docs/research/2026-04-26-j-misc-drift-findings.md` §A.1 + §B.2.
 - **F15 (2026-04-26) — invalid-GUID vs unknown-GUID error messages now distinct across 16 BT action call sites (`MonolithAIBehaviorTreeActions.cpp`).** Hoisted the open-coded `FindGraphNodeByGuid` + null-check pair into a new anonymous-namespace helper `RequireBtNodeByGuid(Graph, GuidStr, ParamName, BTName, OutNode, OutError) -> bool` (declared after the legacy `FindGraphNodeByGuid` at line 210). The legacy helper collapsed both `FGuid::Parse` failures and unknown-GUID lookup failures into the same `nullptr`, so 16 sibling sites all emitted the same opaque `"...not found"` message regardless of whether the caller typed garbage or a valid-but-unmatched GUID. New behavior: parse failure returns `"<ParamName> '<GuidStr>' is not a valid GUID"` (e.g. `"parent_id 'abc' is not a valid GUID"`); lookup failure returns `"No node with GUID '<GuidStr>' in BT '<BTName>'"`. Sites swept: `add_bt_node` (parent_id), `remove_bt_node`, `move_bt_node` (both node_id + new_parent_id), `add_bt_decorator`, `remove_bt_decorator`, `add_bt_service`, `remove_bt_service`, `set_bt_node_property`, `get_bt_node_properties`, `reorder_bt_children`, `add_bt_run_eqs_task`, `add_bt_smart_object_task`, `add_bt_use_ability_task`, `clone_bt_subtree` (both source `node_id` and `dest_parent_id`). All post-lookup validation (`ValidateParentForChildTask`, `Cast<UBTNode>` instance check, `Cast<UBehaviorTreeGraphNode_Root>` removal guard, etc.) preserved verbatim — the helper only replaces the parse + base-lookup steps. Empty-or-resolve sites (`add_bt_node`, `add_bt_run_eqs_task`, `add_bt_smart_object_task`, `add_bt_use_ability_task`) now also emit a clearer `"Root node not found in BT graph"` when the BT lacks a Root edge node. .cpp-only mutation, no header touched, Live Coding compatible. Note: research doc prose said "17 sites" but the actual line list and source-file grep both confirm **16** sites — drift between summary text and the line enumeration. Plan: `Docs/plans/2026-04-26-monolith-j-phase-fix-plan-v2.md` §F15. Investigation: `Docs/research/2026-04-26-j-misc-drift-findings.md` §A.2. Tests: `Plugins/Monolith/Docs/testing/2026-04-26-j2-bt-gas-ability-task-test.md` Failure Modes (`parent_id` not a valid GUID / valid GUID but not in this BT rows now satisfied verbatim).
 - **F18 (2026-04-26) — new `audio::create_test_wave` action procedurally generates a sine-tone USoundWave for test fixtures (no asset deps) (+1 → 1283 total; MonolithAudio 81 → 82).** New action handler `FMonolithAudioAssetActions::CreateTestWave` in `MonolithAudioAssetActions.{h,cpp}`. Inputs: `path` (required, must be under `/Game/`), `frequency_hz` (default 440.0, range [20.0, 20000.0]), `duration_seconds` (default 0.5, range [0.05, 5.0]), `sample_rate` (default 44100, allowlist {22050, 44100, 48000}), `amplitude` (default 0.5, range (0.0, 1.0]). Recipe: validate path + numeric params at action entry (parse-then-mutate idiom); generate `int16` mono PCM samples filled with `amplitude * 32767 * sin(2π·f·t/SR)`; apply 256-sample linear fade-in/fade-out to suppress click; build canonical 44-byte RIFF/WAVE header + PCM payload in memory; `NewObject<USoundWave>` in destination package; set `NumChannels=1`, `SetSampleRate` (`WITH_EDITOR`), `Duration`, `TotalSamples`, `SoundGroup=SOUNDGROUP_Default`; write the WAV blob into `Wave->RawData` via the canonical `Lock(LOCK_READ_WRITE) → Realloc(Size) → FMemory::Memcpy → Unlock` pattern (mirrors `Engine/Source/Editor/AudioEditor/Private/Factories/SoundFactory.cpp::FactoryCreateBinary`); `InvalidateCompressedData(true, false)` so the cooker re-cooks; `FAssetRegistryModule::AssetCreated` + `UPackage::SavePackage`. Returns `{ asset_path, samples_written, duration_actual_seconds, frequency_hz, sample_rate, amplitude }`. Unblocks J3 TC3.19 (USoundWave direct binding) plus any future test that needs a disposable wave fixture (perception, attenuation, submix routing) — fully deterministic, reproducible across runs, project-agnostic. Note: `CreateTestWave` declaration added to private section of `MonolithAudioAssetActions.h` — header change requires full UBT build, Live Coding alone is insufficient. Build deps unchanged (`Engine` already provides `USoundWave`, `AudioEditor` already linked). Plan: `Docs/plans/2026-04-26-monolith-j-phase-fix-plan-v2.md` §F18. Investigation: `Docs/research/2026-04-26-j-misc-drift-findings.md` §B.3.
+- **F22 (2026-04-26) — `MonolithAI.Build.cs` retrofit: SmartObjects + StateTree gated via 3-location detection (no longer hard-deps).** Lines 17-32 of the prior Build.cs hard-added `StateTreeModule`, `StateTreeEditorModule`, `GameplayStateTreeModule`, `PropertyBindingUtils`, `StructUtils`, `SmartObjectsModule`, `SmartObjectsEditorModule` to `PrivateDependencyModuleNames` and force-defined `WITH_STATETREE=1` + `WITH_SMARTOBJECTS=1`. The five backing engine plugins (StateTree, GameplayStateTree, PropertyBindingUtils, StructUtils, SmartObjects) all carry `EnabledByDefault: false` in their `.uplugin` manifests — end users on a fresh project install hit C1083 (missing headers) and LNK2019 (missing module exports) when loading the Monolith plugin without first enabling these engine plugins via the .uproject Plugins panel. Same shape as GitHub issue #30 where `MonolithMesh.dll` hard-linked `GeometryScriptingCore.dll`. Fix: two new conditional probe blocks (`bHasStateTree` + `bHasSmartObjects`) modeled on the existing `bHasGameplayAbilities` / GBA / CommonUI patterns. Each probes 3 locations (engine `Plugins/Runtime/<Plugin>/`, engine `Plugins/AI/<Plugin>/`, project `Plugins/<Plugin>/`) and honours `MONOLITH_RELEASE_BUILD=1` to force OFF for binary releases. Engine paths confirmed via direct disk inspection at `C:/Program Files (x86)/UE_5.7/Engine/Plugins/Runtime/{StateTree,SmartObjects,GameplayStateTree,PropertyBindingUtils}` and `Plugins/Experimental/StructUtils`. `bHasStateTree` adds all 5 StateTree-family modules together (StateTree's own `.uplugin` lists PropertyBindingUtils as a required dep, GameplayStateTree's `.uplugin` requires StateTree, StructUtils is mandatory for `FInstancedStruct` throughout StateTree's task/condition instance data — the four travel as a unit). `bHasSmartObjects` adds the 2 SmartObjects modules together. .cpp action sites already guarded — `#if WITH_STATETREE` / `#if WITH_SMARTOBJECTS` blocks present at: `MonolithAIRuntimeActions.cpp` (5 sites with `#else` stubs at lines 1172, 1234, 1335), `MonolithAIDiscoveryActions.cpp` (11 sites including a `#else` stub at line 1188 for `lint_state_tree`), `MonolithAIScaffoldActions.cpp` (6 sites with `#else` stub at line 1962 for `create_st_from_template`), full-file wrap at `MonolithAIStateTreeActions.{h,cpp}` and `MonolithAISmartObjectActions.{h,cpp}` — `RegisterActions` becomes empty when the macro is 0, so the 60+ StateTree + 16 SmartObjects actions simply do not register (dispatcher returns its own "unknown action" message). All `#if`/`#endif` pairing audited via grep, structurally sound. Build.cs change only — no .cpp modifications. Plan: `Docs/plans/2026-04-26-monolith-j-phase-fix-plan-v2.md` §F22. Reference: GitHub issue #30 (precedent fix for the same pattern in MonolithMesh).
 - **F17 (2026-04-26) — `MonolithSource` auto-reindex on hot-reload (`MonolithSourceSubsystem.h` + `.cpp`).** `UMonolithSourceSubsystem::Initialize` now binds `FCoreUObjectDelegates::ReloadCompleteDelegate` and kicks `TriggerProjectReindex()` on every Live Coding patch and post-UBT hot-reload. Without this hook agents saw stale `source_query` results until someone called `source.trigger_project_reindex` manually — and since `monolith_reindex` is the **asset** indexer (not the source DB), the canonical recovery message had been confusing in spec docs. The new handler `OnReloadComplete(EReloadCompleteReason)` has three guards: (1) `bIsIndexing` re-entrancy guard — UBT can fire one signal per reloaded module in quick succession; (2) 5-second cooldown via new `LastReindexTimeSeconds` member (`FPlatformTime::Seconds()`); (3) bootstrap-skip if `EngineSource.db` doesn't yet exist — incremental reindex requires the engine symbols already in place, so the very-first-install case stays silent and waits for a manual `source.trigger_reindex`. `Deinitialize` unbinds via the new `ReloadCompleteHandle` member BEFORE indexer teardown so a late-firing reload signal can't re-enter into a half-destroyed subsystem. Build.cs unchanged — `CoreUObject` is already a Public dep, no `HotReload` module needed (the `FCoreUObjectDelegates` route is the project-precedent pattern, used in `Plugins/CarnageFX/Docs/plans/2026-04-16-engine-hacks-ranked.md` and `MonolithUI` plan §B for hot-reloaded UClass discovery). Note: the `OnReloadComplete` declaration + `ReloadCompleteHandle` + `LastReindexTimeSeconds` field additions are header changes — Live Coding alone is insufficient; orchestrator must run a full UBT build. SPEC update: `Plugins/Monolith/Docs/specs/SPEC_MonolithSource.md` (new "Auto-Reindex on Hot-Reload (F17)" section + class-table annotation). Plan: `Docs/plans/2026-04-26-monolith-j-phase-fix-plan-v2.md` §F17. Investigation: `Docs/research/2026-04-26-j-misc-drift-findings.md` §C.Layer1.
 
 ---
 
 ## 12. Action Count Summary
 
-| Module | Namespace | Actions |
-|--------|-----------|---------|
-| MonolithCore | monolith | 4 |
-| MonolithBlueprint | blueprint | 89 |
-| MonolithMaterial | material | 63 |
-| MonolithAnimation | animation | 116 |
-| MonolithNiagara | niagara | 108 |
-| MonolithMesh | mesh | 242 (197 core + 45 experimental town gen) |
-| MonolithEditor | editor | 22 |
-| MonolithConfig | config | 6 |
-| MonolithIndex | project | 7 |
-| MonolithSource | source | 11 |
-| MonolithUI | ui | 92 (42 UMG + 50 CommonUI) |
-| MonolithGAS | gas | 131 |
-| MonolithComboGraph | combograph | 13 |
-| MonolithAI | ai | 231 |
-| MonolithLogicDriver | logicdriver | 66 |
-| MonolithAudio | audio | 82 |
-| MonolithBABridge | — | 0 (integration only) |
-| **Total** | | **1283** (1238 active by default) |
+Counts below were re-verified against `Source/Monolith*/Private/*Actions.cpp` `RegisterAction(` call sites on 2026-04-26 post-Phase-J. Where a module's spec previously claimed a different number, those per-module SPEC files were corrected in the same audit pass. The Phase J F8 deltas (`editor` +2, `gas` +1, `ai` +2, `audio` +1) are reflected.
 
-**Note:** MonolithMesh includes 197 core actions (always registered) plus 45 experimental Procedural Town Generator actions (registered only when `bEnableProceduralTownGen = true`, default: false — known geometry issues). MonolithGAS is conditional on `#if WITH_GBA` — projects without GameplayAbilities register 0 GAS actions. MonolithComboGraph is conditional on `#if WITH_COMBOGRAPH` — projects without the ComboGraph plugin register 0 combograph actions. MonolithAI is conditional on `#if WITH_STATETREE` + `#if WITH_SMARTOBJECTS` — projects without these register 0 AI actions. MonolithLogicDriver is conditional on `#if WITH_LOGICDRIVER` — projects without Logic Driver Pro register 0 logicdriver actions. MonolithAudio MetaSound actions are conditional on `#if WITH_METASOUND` — projects without MetaSound get Sound Cue + CRUD + batch actions but no MetaSound graph building. MonolithUI includes 42 UMG baseline actions (always registered) plus 50 CommonUI actions (registered only when `WITH_COMMONUI=1` — projects without CommonUI register 42 UI actions). MonolithBABridge registers no MCP actions — it only provides the `IMonolithGraphFormatter` IModularFeatures bridge consumed by `auto_layout` in the blueprint, material, animation, and niagara modules. The original Python server had higher tool counts (~231 tools) due to fragmented action design — Monolith consolidates these into 19 MCP tools with namespaced actions.
+| Module | Namespace | Actions | Source-of-truth notes |
+|--------|-----------|---------|------------------------|
+| MonolithCore | monolith | 4 | discover, status, update, reindex |
+| MonolithBlueprint | blueprint | 89 | |
+| MonolithMaterial | material | 63 | |
+| MonolithAnimation | animation | 118 | Includes 5 ABP write actions (`add_anim_graph_node`, `connect_anim_graph_pins`, `set_state_animation`, `add_variable_get`, `set_anim_graph_node_property`), 3 ControlRig write, 1 layout, plus 96 baseline + 13 PoseSearch |
+| MonolithNiagara | niagara | 109 | 108 baseline + 1 layout (`auto_layout`) |
+| MonolithMesh | mesh | 240 (195 core + 45 experimental town gen) | Town gen registered only when `bEnableProceduralTownGen=true` (default false) |
+| MonolithEditor | editor | 22 | 20 base + 2 from `MonolithEditorMapActions` (Phase J F8: `create_empty_map`, `get_module_status`) |
+| MonolithConfig | config | 6 | |
+| MonolithIndex | project | 7 | |
+| MonolithSource | source | 11 | |
+| MonolithUI | ui | 96 (42 UMG + 50 CommonUI + 4 GAS UI binding aliases) | The 4 aliases (`bind_widget_to_attribute`, `unbind_widget_attribute`, `list_attribute_bindings`, `clear_widget_attribute_bindings`) are registered into the `ui` namespace from `MonolithGAS/Private/MonolithGASUIBindingActions.cpp` and dispatch to the same handlers as their canonical `gas::` versions |
+| MonolithGAS | gas | 135 | 131 documented in the Action Categories table + 4 UI binding actions (`bind_widget_to_attribute`, `unbind_widget_attribute`, `list_attribute_bindings`, `clear_widget_attribute_bindings`) — the latter four are also aliased into `ui` |
+| MonolithComboGraph | combograph | 13 | |
+| MonolithAI | ai | 221 | Phase J F8 added `add_perception_to_actor` and `get_bt_graph` — pre-J baseline was 219, not the previously documented 229 (per-category `~N` estimates in SPEC_MonolithAI were aspirational, not literal) |
+| MonolithLogicDriver | logicdriver | 66 | |
+| MonolithAudio | audio | 86 | 82 documented in the Action Categories table + 4 perception bind actions (`bind_sound_to_perception`, `unbind_sound_from_perception`, `get_sound_perception_binding`, `list_perception_bound_sounds`) |
+| MonolithBABridge | — | 0 (integration only) | |
+| **Total** | | **1286** registrations across 16 namespaces (1241 active by default; 45 town-gen experimental disabled) | The `ui` namespace double-counts 4 aliased GAS actions; **distinct** action handlers = **1282** |
+
+**Note:** MonolithMesh includes 195 core actions (always registered) plus 45 experimental Procedural Town Generator actions (registered only when `bEnableProceduralTownGen = true`, default: false — known geometry issues). MonolithGAS is conditional on `#if WITH_GBA` — projects without GameplayAbilities register 0 GAS actions. MonolithComboGraph is conditional on `#if WITH_COMBOGRAPH` — projects without the ComboGraph plugin register 0 combograph actions. MonolithAI is conditional on `#if WITH_STATETREE` + `#if WITH_SMARTOBJECTS` — projects without these register 0 AI actions. MonolithLogicDriver is conditional on `#if WITH_LOGICDRIVER` — projects without Logic Driver Pro register 0 logicdriver actions. MonolithAudio MetaSound actions are conditional on `#if WITH_METASOUND` — projects without MetaSound get Sound Cue + CRUD + batch actions but no MetaSound graph building. MonolithUI includes 42 UMG baseline actions (always registered) plus 50 CommonUI actions (registered only when `WITH_COMMONUI=1` — projects without CommonUI register 42 UI actions). MonolithBABridge registers no MCP actions — it only provides the `IMonolithGraphFormatter` IModularFeatures bridge consumed by `auto_layout` in the blueprint, material, animation, and niagara modules. The original Python server had higher tool counts (~231 tools) due to fragmented action design — Monolith consolidates these into 19 MCP tools with namespaced actions.
 
 ---
 

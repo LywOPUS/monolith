@@ -10,6 +10,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Phase J fix sprint — closes 5 silent-accept input-validation FAILs in audio perception, distinguishes invalid-GUID from unknown-GUID across 16 BT action sites, hardens Behavior Tree crash surface, ships canonical AttributeSet for the Leviathan project pattern, adds 6 new MCP scaffolding actions, plus assorted spec/observability/agent-tooling cleanup. Action count 1277 → 1283 (+6 across editor / gas / ai / audio).
 
+> **Audit follow-up (2026-04-26):** the action-count audit triggered by this release found the prior spec totals had drifted from source ground truth (`Source/Monolith*/Private/*Actions.cpp` `RegisterAction(`). Authoritative post-Phase-J in-tree count is **1286** registrations / 1282 distinct handlers (the 4-handler delta = `gas::*` UI binding actions also aliased into `ui::`). The +6 delta described above is correct as a Phase J change, but the absolute totals in §12 of `Plugins/Monolith/Docs/SPEC_CORE.md` are now the canonical reference, not this changelog line.
+
 ### Added
 
 - **`audio::create_test_wave` action** (F18) — procedurally generates a sine-tone `USoundWave` for test fixtures with no asset dependencies. Validates `frequency_hz` (20–20000), `duration_seconds` (0.05–5.0), `sample_rate` ({22050,44100,48000}), `amplitude` ((0,1]). UE 5.7 `FEditorAudioBulkData::UpdatePayload(FSharedBuffer, Owner)` payload write (legacy `Lock`/`Realloc`/`Unlock` removed in UE 5.4+). Unblocks J3 TC3.19 (USoundWave direct binding) and any future test needing a disposable wave.
@@ -78,7 +80,7 @@ Full diff: [v0.14.2...v0.14.3](https://github.com/tumourlove/monolith/compare/v0
   - New `Scripts/monolith_proxy.sh` shell launcher with `python3`/`python` auto-detection and 3.8+ version gate (parity with `monolith_proxy.bat`).
   - `Scripts/monolith_proxy.py` now declares `from __future__ import annotations` so PEP 604 type syntax (`str | None`) works on Python 3.8+ — macOS ships 3.9 by default.
   - `MonolithNiagaraActions.cpp`: renamed local `NO` → `NodeObj` to dodge the `<objc/objc.h>` `#define NO __objc_no` macro leak that transitively reaches `ApplePlatformProcess.h` and broke compilation.
-  - `Monolith.uplugin`: dropped ghost `MonolithISX` module reference (source lives outside master; release pipeline still strips ISX + SteamBridge on its own).
+  - `Monolith.uplugin`: dropped ghost `MonolithISX` module reference (source extracted to sibling plugin `Plugins/MonolithISX/` on 2026-04-21; sibling plugins live outside `Plugins/Monolith/` and are naturally excluded from release zips by `git ls-files` scope — no explicit stripping required).
   - README + CONTRIBUTING updated to document macOS/Linux support and `.sh` launcher.
   - PR by **@MaxenceEpitech**.
   - **Note for macOS users:** this release ships Windows binaries only. Please clone the repo and build from source per `CONTRIBUTING.md` — the macOS build path is proven (all 17 Monolith dylibs compile on UE 5.7 / Apple Silicon). Prebuilt macOS dylibs will follow once a GitHub Actions macOS runner is wired up.

@@ -2,14 +2,14 @@
 
 **Parent:** [SPEC_CORE.md](../SPEC_CORE.md)
 **Engine:** Unreal Engine 5.7+
-**Version:** 0.14.3 (Beta)
+**Version:** 0.14.7 (Beta)
 
 ---
 
 ## MonolithUI
 
 **Dependencies:** Core, CoreUObject, Engine, MonolithCore, UnrealEd, UMGEditor, UMG, Slate, SlateCore, Json, JsonUtilities, KismetCompiler, MovieScene, MovieSceneTracks, CommonUI (optional — `#if WITH_COMMONUI`)
-**Total actions:** 92 (42 UMG baseline + 50 CommonUI)
+**Total actions in `ui::` namespace:** 96 (42 UMG baseline owned by this module + 50 CommonUI owned by this module + 4 GAS UI binding aliases owned by `MonolithGAS` and registered into `ui::`)
 **Settings toggle:** `bEnableUI` (default: True)
 **MCP tool:** `ui_query`
 **Namespace:** `ui`
@@ -18,7 +18,7 @@
 
 | Class | Responsibility |
 |-------|---------------|
-| `FMonolithUIModule` | Registers 92 actions (42 UMG + 50 CommonUI when `WITH_COMMONUI`). Logs live `ui` namespace action count at startup |
+| `FMonolithUIModule` | Registers 92 actions owned by this module (42 UMG + 50 CommonUI when `WITH_COMMONUI`). Logs live `ui` namespace action count at startup |
 | `FMonolithUIActions` | Widget blueprint CRUD: create, inspect, add/remove widgets, property writes, compile |
 | `FMonolithUISlotActions` | Layout slot operations: slot properties, anchor presets, widget movement |
 | `FMonolithUITemplateActions` | High-level HUD/menu/panel scaffold templates (8 templates) |
@@ -220,6 +220,23 @@ Class-as-data: style creators (`create_common_button_style`, `create_common_text
 | `wrap_with_reduce_motion_gate` | `asset_path`, `widget_name` | Wrap a widget's animations with a reduce-motion accessibility gate |
 | `set_text_scale_binding` | `asset_path`, `widget_name`, `binding_spec` | Bind text scale to an accessibility setting |
 | `apply_high_contrast_variant` | `asset_path`, `style_map` | Apply high-contrast color overrides to CommonUI styled widgets |
+
+---
+
+## GAS Bridge Aliases (4 — namespace: "ui", source: `MonolithGAS`)
+
+The MonolithGAS module also registers four cross-namespace aliases under `ui::` so that GAS-aware UI authoring tools see them in `ui_query` results without learning a separate namespace. The aliases dispatch to the same handlers as their `gas::` originals — there is no behavioural difference.
+
+| Action (alias) | Canonical | Description |
+|---|---|---|
+| `ui::bind_widget_to_attribute` | `gas::bind_widget_to_attribute` | Bind a widget's display property to a GAS attribute via `UMonolithGASAttributeBindingClassExtension`. See [SPEC_MonolithGAS.md](SPEC_MonolithGAS.md) for full param schema |
+| `ui::unbind_widget_attribute` | `gas::unbind_widget_attribute` | Remove a binding by widget+target_property |
+| `ui::list_attribute_bindings` | `gas::list_attribute_bindings` | List all bindings on a Widget Blueprint |
+| `ui::clear_widget_attribute_bindings` | `gas::clear_widget_attribute_bindings` | Clear all bindings on a Widget Blueprint |
+
+**Registration site:** `Plugins/Monolith/Source/MonolithGAS/Private/MonolithGASUIBindingActions.cpp:571-577`. Both registrations call the same handler functor — `unbind_widget_attribute` is registered as the no-`s` form in both namespaces.
+
+> **Why this is here, not in MonolithUI source:** the binding logic depends on GAS types (`FGameplayAttribute`, `UAttributeSet`) which would force MonolithUI to take a hard `WITH_GBA` dep. Aliasing keeps MonolithUI buildable in non-GAS projects while still letting `ui_query` callers find the action.
 
 ---
 
